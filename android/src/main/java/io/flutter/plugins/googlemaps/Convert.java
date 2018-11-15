@@ -4,7 +4,14 @@
 
 package io.flutter.plugins.googlemaps;
 
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
+import android.graphics.Paint;
 import android.graphics.Point;
+import android.graphics.Rect;
+import android.text.TextPaint;
+
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.model.BitmapDescriptor;
@@ -13,6 +20,8 @@ import com.google.android.gms.maps.model.CameraPosition;
 import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import io.flutter.view.FlutterMain;
+
+import java.time.format.TextStyle;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
@@ -37,9 +46,72 @@ class Convert {
           return BitmapDescriptorFactory.fromAsset(
               FlutterMain.getLookupKeyForAsset(toString(data.get(1)), toString(data.get(2))));
         }
+      case "fromText":
+        if (data.size() == 7) {
+          String markerTitle = toString(data.get(1));
+          int size = toInt(data.get(2));
+          String borderColor = toString(data.get(3));
+          int textSize = toInt(data.get(4));
+          int borderSize = toInt(data.get(5));
+          String backgroundColor = toString(data.get(6));
+          return BitmapDescriptorFactory.fromBitmap(drawMarkerBitmap(markerTitle, size, borderColor, textSize, borderSize, backgroundColor));
+        }
       default:
         throw new IllegalArgumentException("Cannot interpret " + o + " as BitmapDescriptor");
     }
+  }
+
+  private static Bitmap drawMarkerBitmap(String markerTitle, int size, String borderColor, int textSize, int borderSize, String backgroundColor) {
+    Bitmap bitmap = Bitmap.createBitmap(
+            size, // Width
+            size, // Height
+            Bitmap.Config.ARGB_8888 // Config
+    );
+
+    // Initialize a new Canvas instance
+    Canvas canvas = new Canvas(bitmap);
+
+    // Draw a solid color to the canvas b
+
+    // Initialize a new Paint instance to draw the Circle
+    Paint paint = new Paint();
+    paint.setStyle(Paint.Style.FILL);
+    paint.setColor(Color.parseColor(backgroundColor));
+    paint.setStrokeWidth(borderSize);
+    paint.setAntiAlias(true);
+
+    // Calculate the available radius of canvas
+    int radius = Math.min(canvas.getWidth(),canvas.getHeight()/2);
+
+    // Set a pixels value to padding around the circle
+
+    canvas.drawCircle(
+            canvas.getWidth() / 2, // cx
+            canvas.getHeight() / 2, // cy
+            radius - paint.getStrokeWidth() * 2, // Radius
+            paint // Paint
+    );
+
+    paint.setStyle(Paint.Style.STROKE);
+    paint.setColor(Color.parseColor(borderColor));
+    canvas.drawCircle(
+            canvas.getWidth() / 2, // cx
+            canvas.getHeight() / 2, // cy
+            radius - paint.getStrokeWidth() * 2, // Radius
+            paint // Paint
+    );
+
+    TextPaint textPaint = new TextPaint();
+    textPaint.setTextAlign(Paint.Align.CENTER);
+    textPaint.setTextSize(textSize);
+
+    int xPos = (canvas.getWidth() / 2);
+    int yPos = (int) ((canvas.getHeight() / 2) - ((textPaint.descent() + textPaint.ascent()) / 2)) ;
+    //((textPaint.descent() + textPaint.ascent()) / 2) is the distance from the baseline to the center.
+
+    canvas.drawText(markerTitle, xPos, yPos, textPaint);
+
+    return bitmap;
   }
 
   private static boolean toBoolean(Object o) {

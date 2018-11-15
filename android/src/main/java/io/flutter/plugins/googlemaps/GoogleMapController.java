@@ -10,24 +10,46 @@ import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.STOPPED;
 import android.app.Activity;
 import android.app.Application;
 import android.content.Context;
+import android.graphics.Color;
+import android.os.AsyncTask;
 import android.os.Bundle;
+import android.os.IBinder;
+import android.util.Log;
 import android.view.View;
+
+import com.google.android.gms.dynamic.IObjectWrapper;
 import com.google.android.gms.maps.CameraUpdate;
 import com.google.android.gms.maps.CameraUpdateFactory;
 import com.google.android.gms.maps.GoogleMap;
 import com.google.android.gms.maps.GoogleMapOptions;
 import com.google.android.gms.maps.MapView;
 import com.google.android.gms.maps.OnMapReadyCallback;
+import com.google.android.gms.maps.model.BitmapDescriptor;
+import com.google.android.gms.maps.model.BitmapDescriptorFactory;
 import com.google.android.gms.maps.model.CameraPosition;
+import com.google.android.gms.maps.model.LatLng;
 import com.google.android.gms.maps.model.LatLngBounds;
 import com.google.android.gms.maps.model.Marker;
 import com.google.android.gms.maps.model.MarkerOptions;
+import com.google.android.gms.maps.model.PolylineOptions;
+
+import org.json.JSONObject;
+
 import io.flutter.plugin.common.MethodCall;
 import io.flutter.plugin.common.MethodChannel;
 import io.flutter.plugin.common.PluginRegistry;
 import io.flutter.plugin.platform.PlatformView;
+
+import java.io.BufferedReader;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.InputStreamReader;
+import java.net.HttpURLConnection;
+import java.net.URL;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.concurrent.atomic.AtomicInteger;
 
@@ -50,6 +72,7 @@ final class GoogleMapController
   private final PluginRegistry.Registrar registrar;
   private final MapView mapView;
   private final Map<String, MarkerController> markers;
+  private final List<Marker> markerList;
   private GoogleMap googleMap;
   private boolean trackCameraPosition = false;
   private boolean disposed = false;
@@ -73,6 +96,7 @@ final class GoogleMapController
             new MethodChannel(registrar.messenger(), "plugins.flutter.io/google_maps_" + id);
     methodChannel.setMethodCallHandler(this);
     this.registrarActivityHashCode = registrar.activity().hashCode();
+    markerList = new ArrayList<>();
   }
 
   @Override
@@ -137,7 +161,172 @@ final class GoogleMapController
   Marker addMarker(MarkerOptions markerOptions, boolean consumesTapEvents) {
     final Marker marker = googleMap.addMarker(markerOptions);
     markers.put(marker.getId(), new MarkerController(marker, consumesTapEvents, this));
+    markerList.add(marker);
+//    drawRoute();
     return marker;
+  }
+
+  private void drawRoute() {
+    if (markerList.size() < 2) return;
+    DownloadTask downloadTask = new DownloadTask();
+    // Start downloading json data from Google Directions API
+    downloadTask.execute(getDirectionsUrl());
+  }
+
+  private String getDirectionsUrl() {
+    int markerLength = markerList.size();
+    if (markerLength < 2) return "";
+
+    // Origin of route
+    String str_origin = "origin=" + markerList.get(0).getPosition().latitude + "," + markerList.get(0).getPosition().longitude;
+
+    // Destination of route
+    String str_dest = "destination=" + markerList.get(markerLength - 1).getPosition().latitude + "," + markerList.get(markerLength - 1).getPosition().longitude;
+
+    String waypoints = "";
+    if (markerLength >= 3) {
+      for (int i = 1; i < markerLength - 2; i++) {
+        if (i > 1) waypoints += "|";
+        waypoints += markerList.get(i).getPosition().latitude + "," + markerList.get(i).getPosition().latitude;
+      }
+    }
+    String str_waypoints = markerLength >= 3 ? "waypoints=" + waypoints : "";
+
+    // Sensor enabled
+    String sensor = "sensor=false";
+    String mode = "mode=driving";
+
+    // Building the parameters to the web service
+    String parameters = str_origin + "&" + str_dest + "&" + str_waypoints + "&" + sensor + "&" + mode;
+
+    // Output format
+    String output = "json";
+
+    // Building the url to the web service
+    String url = "https://maps.googleapis.com/maps/api/directions/" + output + "?" + parameters + "&key=AIzaSyBoG7XAHKf5cuMHGjMjMOCepGOhsFRsxPo";
+
+
+    return url;
+  }
+
+  private String downloadUrl(String strUrl) throws IOException {
+    String data = "";
+    InputStream iStream = null;
+    HttpURLConnection urlConnection = null;
+    try {
+      URL url = new URL(strUrl);
+
+      urlConnection = (HttpURLConnection) url.openConnection();
+
+      urlConnection.connect();
+
+      iStream = urlConnection.getInputStream();
+
+      BufferedReader br = new BufferedReader(new InputStreamReader(iStream));
+
+      StringBuffer sb = new StringBuffer();
+
+      String line = "";
+      while ((line = br.readLine()) != null) {
+        sb.append(line);
+      }
+
+      data = sb.toString();
+
+      br.close();
+
+    } catch (Exception e) {
+      Log.d("Exception", e.toString());
+    } finally {
+      iStream.close();
+      urlConnection.disconnect();
+    }
+    return data;
+  }
+
+  private class DownloadTask extends AsyncTask<String, Void, String> {
+
+    @Override
+    protected String doInBackground(String... url) {
+
+      String data = "";
+
+      try {
+        data = downloadUrl(url[0]);
+      } catch (Exception e) {
+        Log.d("Background Task", e.toString());
+      }
+      return data;
+    }
+
+    @Override
+    protected void onPostExecute(String result) {
+      super.onPostExecute(result);
+
+      ParserTask parserTask = new ParserTask();
+
+
+      parserTask.execute(result);
+
+    }
+  }
+
+
+  /**
+   * A class to parse the Google Places in JSON format
+   */
+  private class ParserTask extends AsyncTask<String, Integer, List<List<HashMap<String, String>>>> {
+
+    // Parsing the data in non-ui thread
+    @Override
+    protected List<List<HashMap<String, String>>> doInBackground(String... jsonData) {
+
+      JSONObject jObject;
+      List<List<HashMap<String, String>>> routes = null;
+
+      try {
+        jObject = new JSONObject(jsonData[0]);
+        DirectionsJSONParser parser = new DirectionsJSONParser();
+
+        routes = parser.parse(jObject);
+      } catch (Exception e) {
+        e.printStackTrace();
+      }
+      return routes;
+    }
+
+    @Override
+    protected void onPostExecute(List<List<HashMap<String, String>>> result) {
+      ArrayList points = null;
+      PolylineOptions lineOptions = null;
+      MarkerOptions markerOptions = new MarkerOptions();
+
+      for (int i = 0; i < result.size(); i++) {
+        points = new ArrayList();
+        lineOptions = new PolylineOptions();
+
+        List<HashMap<String, String>> path = result.get(i);
+
+        for (int j = 0; j < path.size(); j++) {
+          HashMap<String, String> point = path.get(j);
+
+          double lat = Double.parseDouble(point.get("lat"));
+          double lng = Double.parseDouble(point.get("lng"));
+          LatLng position = new LatLng(lat, lng);
+
+          points.add(position);
+        }
+
+        lineOptions.addAll(points);
+        lineOptions.width(12);
+        lineOptions.color(Color.RED);
+        lineOptions.geodesic(true);
+
+      }
+
+// Drawing polyline in the Google Map for the i-th route
+      googleMap.addPolyline(lineOptions);
+    }
   }
 
   private void removeMarker(String markerId) {

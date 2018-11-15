@@ -43,6 +43,10 @@ class BitmapDescriptor {
     }
   }
 
+  static BitmapDescriptor fromText(String text, int size, String borderColor, int textSize, int borderSize, String backgroundColor) {
+      return BitmapDescriptor._(<dynamic>['fromText', text, size, borderColor, textSize, borderSize, backgroundColor]);
+  }
+
   final dynamic _json;
 
   dynamic _toJson() => _json;

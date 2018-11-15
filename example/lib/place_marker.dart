@@ -73,6 +73,7 @@ class PlaceMarkerBodyState extends State<PlaceMarkerBody> {
         center.latitude + sin(_markerCount * pi / 6.0) / 20.0,
         center.longitude + cos(_markerCount * pi / 6.0) / 20.0,
       ),
+      icon: BitmapDescriptor.fromText("D1", 100, "#000000", 40, 5, "#3C9EC0"),
       infoWindowText: InfoWindowText('Marker #${_markerCount + 1}', '*'),
     ));
     setState(() {
