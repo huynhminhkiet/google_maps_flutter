@@ -1,10 +1,7 @@
-// Copyright 2018 The Chromium Authors. All rights reserved.
-// Use of this source code is governed by a BSD-style license that can be
-// found in the LICENSE file.
-
 package io.flutter.plugins.googlemaps;
 
 import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.CREATED;
+import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.DESTROYED;
 import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.PAUSED;
 import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.RESUMED;
 import static io.flutter.plugins.googlemaps.GoogleMapsPlugin.STARTED;
@@ -36,7 +33,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 /** Controller of a single GoogleMaps MapView instance. */
 final class GoogleMapController
-    implements Application.ActivityLifecycleCallbacks,
+        implements Application.ActivityLifecycleCallbacks,
         GoogleMap.OnCameraIdleListener,
         GoogleMap.OnCameraMoveListener,
         GoogleMap.OnCameraMoveStartedListener,
@@ -58,13 +55,14 @@ final class GoogleMapController
   private boolean disposed = false;
   private final float density;
   private MethodChannel.Result mapReadyResult;
+  private final int registrarActivityHashCode;
 
   GoogleMapController(
-      int id,
-      Context context,
-      AtomicInteger activityState,
-      PluginRegistry.Registrar registrar,
-      GoogleMapOptions options) {
+          int id,
+          Context context,
+          AtomicInteger activityState,
+          PluginRegistry.Registrar registrar,
+          GoogleMapOptions options) {
     this.id = id;
     this.activityState = activityState;
     this.registrar = registrar;
@@ -72,8 +70,9 @@ final class GoogleMapController
     this.markers = new HashMap<>();
     this.density = context.getResources().getDisplayMetrics().density;
     methodChannel =
-        new MethodChannel(registrar.messenger(), "plugins.flutter.io/google_maps_" + id);
+            new MethodChannel(registrar.messenger(), "plugins.flutter.io/google_maps_" + id);
     methodChannel.setMethodCallHandler(this);
+    this.registrarActivityHashCode = registrar.activity().hashCode();
   }
 
   @Override
@@ -108,9 +107,12 @@ final class GoogleMapController
       case CREATED:
         mapView.onCreate(null);
         break;
+      case DESTROYED:
+        // Nothing to do, the activity has been completely destroyed.
+        break;
       default:
         throw new IllegalArgumentException(
-            "Cannot interpret " + activityState.get() + " as an activity state");
+                "Cannot interpret " + activityState.get() + " as an activity state");
     }
     registrar.activity().getApplication().registerActivityLifecycleCallbacks(this);
     mapView.getMapAsync(this);
@@ -178,50 +180,50 @@ final class GoogleMapController
         mapReadyResult = result;
         break;
       case "map#update":
-        {
-          Convert.interpretGoogleMapOptions(call.argument("options"), this);
-          result.success(Convert.toJson(getCameraPosition()));
-          break;
-        }
+      {
+        Convert.interpretGoogleMapOptions(call.argument("options"), this);
+        result.success(Convert.toJson(getCameraPosition()));
+        break;
+      }
       case "camera#move":
-        {
-          final CameraUpdate cameraUpdate =
-              Convert.toCameraUpdate(call.argument("cameraUpdate"), density);
-          moveCamera(cameraUpdate);
-          result.success(null);
-          break;
-        }
+      {
+        final CameraUpdate cameraUpdate =
+                Convert.toCameraUpdate(call.argument("cameraUpdate"), density);
+        moveCamera(cameraUpdate);
+        result.success(null);
+        break;
+      }
       case "camera#animate":
-        {
-          final CameraUpdate cameraUpdate =
-              Convert.toCameraUpdate(call.argument("cameraUpdate"), density);
-          animateCamera(cameraUpdate);
-          result.success(null);
-          break;
-        }
+      {
+        final CameraUpdate cameraUpdate =
+                Convert.toCameraUpdate(call.argument("cameraUpdate"), density);
+        animateCamera(cameraUpdate);
+        result.success(null);
+        break;
+      }
       case "marker#add":
-        {
-          final MarkerBuilder markerBuilder = newMarkerBuilder();
-          Convert.interpretMarkerOptions(call.argument("options"), markerBuilder);
-          final String markerId = markerBuilder.build();
-          result.success(markerId);
-          break;
-        }
+      {
+        final MarkerBuilder markerBuilder = newMarkerBuilder();
+        Convert.interpretMarkerOptions(call.argument("options"), markerBuilder);
+        final String markerId = markerBuilder.build();
+        result.success(markerId);
+        break;
+      }
       case "marker#remove":
-        {
-          final String markerId = call.argument("marker");
-          removeMarker(markerId);
-          result.success(null);
-          break;
-        }
+      {
+        final String markerId = call.argument("marker");
+        removeMarker(markerId);
+        result.success(null);
+        break;
+      }
       case "marker#update":
-        {
-          final String markerId = call.argument("marker");
-          final MarkerController marker = marker(markerId);
-          Convert.interpretMarkerOptions(call.argument("options"), marker);
-          result.success(null);
-          break;
-        }
+      {
+        final String markerId = call.argument("marker");
+        final MarkerController marker = marker(markerId);
+        Convert.interpretMarkerOptions(call.argument("options"), marker);
+        result.success(null);
+        break;
+      }
       default:
         result.notImplemented();
     }
@@ -282,7 +284,7 @@ final class GoogleMapController
 
   @Override
   public void onActivityCreated(Activity activity, Bundle savedInstanceState) {
-    if (disposed) {
+    if (disposed || activity.hashCode() != registrarActivityHashCode) {
       return;
     }
     mapView.onCreate(savedInstanceState);
@@ -290,7 +292,7 @@ final class GoogleMapController
 
   @Override
   public void onActivityStarted(Activity activity) {
-    if (disposed) {
+    if (disposed || activity.hashCode() != registrarActivityHashCode) {
       return;
     }
     mapView.onStart();
@@ -298,7 +300,7 @@ final class GoogleMapController
 
   @Override
   public void onActivityResumed(Activity activity) {
-    if (disposed) {
+    if (disposed || activity.hashCode() != registrarActivityHashCode) {
       return;
     }
     mapView.onResume();
@@ -306,7 +308,7 @@ final class GoogleMapController
 
   @Override
   public void onActivityPaused(Activity activity) {
-    if (disposed) {
+    if (disposed || activity.hashCode() != registrarActivityHashCode) {
       return;
     }
     mapView.onPause();
@@ -314,7 +316,7 @@ final class GoogleMapController
 
   @Override
   public void onActivityStopped(Activity activity) {
-    if (disposed) {
+    if (disposed || activity.hashCode() != registrarActivityHashCode) {
       return;
     }
     mapView.onStop();
@@ -322,7 +324,7 @@ final class GoogleMapController
 
   @Override
   public void onActivitySaveInstanceState(Activity activity, Bundle outState) {
-    if (disposed) {
+    if (disposed || activity.hashCode() != registrarActivityHashCode) {
       return;
     }
     mapView.onSaveInstanceState(outState);
@@ -330,7 +332,7 @@ final class GoogleMapController
 
   @Override
   public void onActivityDestroyed(Activity activity) {
-    if (disposed) {
+    if (disposed || activity.hashCode() != registrarActivityHashCode) {
       return;
     }
     mapView.onDestroy();
