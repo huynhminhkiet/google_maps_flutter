@@ -29,7 +29,7 @@ import java.util.Map;
 
 /** Conversions between JSON-like values and GoogleMaps data types. */
 class Convert {
-  private static BitmapDescriptor toBitmapDescriptor(Object o) {
+  private static BitmapDescriptor toBitmapDescriptor(Object o, float density) {
     final List<?> data = toList(o);
     switch (toString(data.get(0))) {
       case "defaultMarker":
@@ -54,17 +54,18 @@ class Convert {
           int textSize = toInt(data.get(4));
           int borderSize = toInt(data.get(5));
           String backgroundColor = toString(data.get(6));
-          return BitmapDescriptorFactory.fromBitmap(drawMarkerBitmap(markerTitle, size, borderColor, textSize, borderSize, backgroundColor));
+          return BitmapDescriptorFactory.fromBitmap(drawMarkerBitmap(markerTitle, size, borderColor, textSize, borderSize, backgroundColor, density));
         }
       default:
         throw new IllegalArgumentException("Cannot interpret " + o + " as BitmapDescriptor");
     }
   }
 
-  private static Bitmap drawMarkerBitmap(String markerTitle, int size, String borderColor, int textSize, int borderSize, String backgroundColor) {
+  private static Bitmap drawMarkerBitmap(String markerTitle, int size, String borderColor, int textSize, int borderSize, String backgroundColor, float density) {
+    int markerSize = Math.round(size * density);
     Bitmap bitmap = Bitmap.createBitmap(
-            size, // Width
-            size, // Height
+            markerSize, // Width
+            markerSize, // Height
             Bitmap.Config.ARGB_8888 // Config
     );
 
@@ -77,7 +78,7 @@ class Convert {
     Paint paint = new Paint();
     paint.setStyle(Paint.Style.FILL);
     paint.setColor(Color.parseColor(backgroundColor));
-    paint.setStrokeWidth(borderSize);
+    paint.setStrokeWidth(borderSize * density);
     paint.setAntiAlias(true);
 
     // Calculate the available radius of canvas
@@ -103,7 +104,7 @@ class Convert {
 
     TextPaint textPaint = new TextPaint();
     textPaint.setTextAlign(Paint.Align.CENTER);
-    textPaint.setTextSize(textSize);
+    textPaint.setTextSize(textSize * density);
 
     int xPos = (canvas.getWidth() / 2);
     int yPos = (int) ((canvas.getHeight() / 2) - ((textPaint.descent() + textPaint.ascent()) / 2)) ;
@@ -283,7 +284,7 @@ class Convert {
     }
   }
 
-  static void interpretMarkerOptions(Object o, MarkerOptionsSink sink) {
+  static void interpretMarkerOptions(Object o, MarkerOptionsSink sink, float density) {
     final Map<?, ?> data = toMap(o);
     final Object alpha = data.get("alpha");
     if (alpha != null) {
@@ -308,7 +309,7 @@ class Convert {
     }
     final Object icon = data.get("icon");
     if (icon != null) {
-      sink.setIcon(toBitmapDescriptor(icon));
+      sink.setIcon(toBitmapDescriptor(icon, density));
     }
     final Object infoWindowAnchor = data.get("infoWindowAnchor");
     if (infoWindowAnchor != null) {
